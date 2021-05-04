@@ -45,8 +45,8 @@ jobs:
         uses: docker/login-action@v1
         with:
           registry: ghcr.io
-          username: okctl@oslo.kommune.no
-          password: ${{ secrets.OKCTL_BOT_DEPLOY_PAT }}
+          username: julius.pedersen@origo.oslo.kommune.no
+          password: ${{ secrets.JULIUS_DEPLOY_PAT }}
 
       - name: Github Tag Bump
         id: bump_version
