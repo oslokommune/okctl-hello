@@ -2,11 +2,12 @@ package main
 
 import (
 	_ "embed"
+	"log"
+	"net/http"
+
 	"github.com/oslokommune/okctl-hello/pkg/content"
 	"github.com/oslokommune/okctl-hello/pkg/monitoring"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"log"
-	"net/http"
 )
 
 //go:embed public/index.html
