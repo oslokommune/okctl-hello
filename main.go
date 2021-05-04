@@ -20,8 +20,10 @@ func main() {
 
 	server.Handle("/metrics", promhttp.Handler())
 
-	server.Handle("/logo.png", content.LogoHandler(logo))
-	server.Handle("/", monitoring.NewMonitoringMiddleware(
+	server.Handle("/logo.png", monitoring.NewOlliCounterMiddleware(
+		content.LogoHandler(logo),
+	))
+	server.Handle("/", monitoring.NewHitCounterMiddleware(
 		content.StaticHtmlHandler(indexHtml),
 	))
 

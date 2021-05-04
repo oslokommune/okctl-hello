@@ -9,12 +9,16 @@ import (
 
 var (
 	HitCounter = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "okctl_hello_hits",
-		Help: "Counts the number of hits to okctl-hello",
+		Name: "okctl_route_hits",
+		Help: "Counts the number of hits to a route",
+	})
+	ImageLoads = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "okctl_olli_counter",
+		Help: "Counts the number of hits to the Olli logo",
 	})
 )
 
-func NewMonitoringMiddleware(next http.HandlerFunc) http.Handler {
+func NewHitCounterMiddleware(next http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		HitCounter.Inc()
 
@@ -22,8 +26,21 @@ func NewMonitoringMiddleware(next http.HandlerFunc) http.Handler {
 	})
 }
 
+func NewOlliCounterMiddleware(next http.HandlerFunc) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		ImageLoads.Inc()
+
+		next.ServeHTTP(writer, request)
+	})
+}
+
 func init() {
 	err := prometheus.Register(HitCounter)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	err = prometheus.Register(ImageLoads)
 	if err != nil {
 		log.Fatalln(err)
 	}
