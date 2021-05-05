@@ -19,7 +19,7 @@ var (
 	})
 )
 
-func NewHitCounterMiddleware(next http.HandlerFunc) http.Handler {
+func NewHitCounterMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		HitCounter.Inc()
 
@@ -27,7 +27,7 @@ func NewHitCounterMiddleware(next http.HandlerFunc) http.Handler {
 	})
 }
 
-func NewOlliCounterMiddleware(next http.HandlerFunc) http.Handler {
+func NewOlliCounterMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		ImageLoads.Inc()
 
