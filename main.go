@@ -2,11 +2,13 @@ package main
 
 import (
 	_ "embed"
-	"log"
+	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/oslokommune/okctl-hello/pkg/logging"
+	"github.com/oslokommune/okctl-hello/pkg/postgres"
 	"github.com/sirupsen/logrus"
 
 	"github.com/oslokommune/okctl-hello/pkg/content"
@@ -34,6 +36,28 @@ func main() {
 	server.Handle("/logo.png", monitoring.NewOlliCounterMiddleware(
 		content.LogoHandler(logo),
 	))
+
+	if rawDSN := os.Getenv("DSN"); rawDSN != "" {
+		logger.Info("Found DSN. Enabling Postgres integration")
+
+		err := enablePostgres(server, logger, rawDSN)
+		if err != nil {
+			logger.Fatal(err)
+		}
+	} else {
+		logger.Info("No DSN found. Ignoring Postgres integration")
+
+		server.HandleFunc("/postgres/read", func(writer http.ResponseWriter, request *http.Request) {
+			writer.WriteHeader(http.StatusOK)
+			_, _ = writer.Write([]byte("Postgres integration is disabled. Use the DSN environment variable to activate."))
+		})
+
+		server.HandleFunc("/postgres/write", func(writer http.ResponseWriter, request *http.Request) {
+			writer.WriteHeader(http.StatusOK)
+			_, _ = writer.Write([]byte("Postgres integration is disabled. Use the DSN environment variable to activate."))
+		})
+	}
+
 	server.Handle("/", monitoring.NewHitCounterMiddleware(
 		logging.NewLoggingMiddleware(
 			logger,
@@ -41,5 +65,67 @@ func main() {
 		),
 	))
 
-	log.Fatal(http.ListenAndServe(":3000", server))
+	logger.Fatal(http.ListenAndServe(":3000", server))
+}
+
+func enablePostgres(server *http.ServeMux, logger *logrus.Logger, rawDSN string) error {
+	dsn := postgres.ParseDSN(rawDSN)
+
+	if err := dsn.Validate(); err != nil {
+		return fmt.Errorf("validating DSN: %w", err)
+	}
+
+	pgClient := postgres.Client{DSN: dsn}
+	dbErrorFields := logrus.Fields{
+		"database-host": pgClient.DSN.URI,
+		"database-port": pgClient.DSN.Port,
+		"database-user": pgClient.DSN.Username,
+	}
+
+	server.HandleFunc("/postgres/write", func(w http.ResponseWriter, r *http.Request) {
+		err := pgClient.Open()
+		if err != nil {
+			logger.WithFields(dbErrorFields).Errorf("opening database: %s", err.Error())
+
+			return
+		}
+
+		defer func() {
+			_ = pgClient.Close()
+		}()
+
+		err = pgClient.Write()
+		if err != nil {
+			logger.WithFields(dbErrorFields).Errorf("writing to database: %s", err.Error())
+
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	})
+
+	server.HandleFunc("/postgres/read", func(w http.ResponseWriter, r *http.Request) {
+		err := pgClient.Open()
+		if err != nil {
+			logger.WithFields(dbErrorFields).Errorf("opening database: %s", err.Error())
+
+			return
+		}
+
+		defer func() {
+			_ = pgClient.Close()
+		}()
+
+		currentHits, err := pgClient.Read()
+		if err != nil {
+			logger.WithFields(dbErrorFields).Errorf("reading from database: %s", err.Error())
+
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(fmt.Sprintf("hits: %s", strconv.Itoa(currentHits))))
+	})
+
+	return nil
 }
