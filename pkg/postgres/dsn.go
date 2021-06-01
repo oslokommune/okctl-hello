@@ -8,7 +8,7 @@ import (
 	"github.com/go-ozzo/ozzo-validation/v4/is"
 )
 
-var dsnRegex = regexp.MustCompile(`(\w+)://(\w+):(.+)@([\w-]+):(\d+)/(\w+)`)
+var dsnRegex = regexp.MustCompile(`(\w+)://(\w+):(.+)@([\w-\.]+):(\d+)/(\w+)`)
 
 type DSN struct {
 	Scheme       string
