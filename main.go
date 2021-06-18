@@ -31,6 +31,11 @@ func main() {
 		Level:     logrus.InfoLevel,
 	}
 
+	server.HandleFunc("/health", func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusOK)
+		_, _ = writer.Write([]byte("OK"))
+	})
+
 	server.Handle("/metrics", promhttp.Handler())
 
 	server.Handle("/logo.png", monitoring.NewOlliCounterMiddleware(
