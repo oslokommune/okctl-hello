@@ -7,6 +7,8 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/oslokommune/okctl-hello/pkg/health"
+
 	"github.com/oslokommune/okctl-hello/pkg/logging"
 	"github.com/oslokommune/okctl-hello/pkg/postgres"
 	"github.com/sirupsen/logrus"
@@ -31,10 +33,11 @@ func main() {
 		Level:     logrus.InfoLevel,
 	}
 
-	server.HandleFunc("/health", func(writer http.ResponseWriter, request *http.Request) {
-		writer.WriteHeader(http.StatusOK)
-		_, _ = writer.Write([]byte("OK"))
-	})
+	if debug := os.Getenv("DEBUG"); debug != "true" {
+		server.Handle("/health", health.HandlerFunc())
+	} else {
+		server.Handle("/health", health.DebugHandler(logger))
+	}
 
 	server.Handle("/metrics", promhttp.Handler())
 
