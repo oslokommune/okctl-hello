@@ -3,6 +3,7 @@ package main
 import (
 	_ "embed"
 	"fmt"
+	"github.com/oslokommune/okctl-hello/pkg/health"
 	"net/http"
 	"os"
 	"strconv"
@@ -31,10 +32,11 @@ func main() {
 		Level:     logrus.InfoLevel,
 	}
 
-	server.HandleFunc("/health", func(writer http.ResponseWriter, request *http.Request) {
-		writer.WriteHeader(http.StatusOK)
-		_, _ = writer.Write([]byte("OK"))
-	})
+	if debug := os.Getenv("DEBUG"); debug != "true" {
+		server.Handle("/health", health.HandlerFunc())
+	} else {
+		server.Handle("/health", health.DebugHandler(logger))
+	}
 
 	server.Handle("/metrics", promhttp.Handler())
 

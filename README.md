@@ -22,3 +22,10 @@ A simple docker container exposing a http server on port `3000`.
     Example: postgres://bobs:youruncle@postgres-server:5432/ranch
     Description: A data source name(DSN) refering to a Postgres instance
     ```
+*
+    ```yaml
+    Name: DEBUG
+    Syntax: true | false
+    Example: true 
+    Description: Defaults to false. Set to true to enable debug logging. 
+    ```
