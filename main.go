@@ -7,6 +7,8 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/oslokommune/okctl-hello/pkg/loadtest"
+
 	"github.com/oslokommune/okctl-hello/pkg/health"
 
 	"github.com/oslokommune/okctl-hello/pkg/logging"
@@ -65,6 +67,8 @@ func main() {
 			_, _ = writer.Write([]byte("Postgres integration is disabled. Use the DSN environment variable to activate."))
 		})
 	}
+
+	server.Handle("/burn-cpu", loadtest.HandlerFunc())
 
 	server.Handle("/", monitoring.NewHitCounterMiddleware(
 		logging.NewLoggingMiddleware(
