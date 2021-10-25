@@ -3,6 +3,7 @@ package main
 import (
 	_ "embed"
 	"fmt"
+	"github.com/oslokommune/okctl-hello/pkg/communicationtest"
 	"net/http"
 	"os"
 	"strconv"
@@ -69,6 +70,8 @@ func main() {
 	}
 
 	server.Handle("/burn-cpu", loadtest.HandlerFunc())
+
+	server.Handle("/commtest", communicationtest.HandlerFunc())
 
 	server.Handle("/", monitoring.NewHitCounterMiddleware(
 		logging.NewLoggingMiddleware(
