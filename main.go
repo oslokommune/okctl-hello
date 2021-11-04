@@ -3,10 +3,12 @@ package main
 import (
 	_ "embed"
 	"fmt"
-	"github.com/oslokommune/okctl-hello/pkg/communicationtest"
+	"github.com/oslokommune/okctl-hello/pkg/tracing"
 	"net/http"
 	"os"
 	"strconv"
+
+	"github.com/oslokommune/okctl-hello/pkg/communicationtest"
 
 	"github.com/oslokommune/okctl-hello/pkg/loadtest"
 
@@ -72,6 +74,8 @@ func main() {
 	server.Handle("/burn-cpu", loadtest.HandlerFunc())
 
 	server.Handle("/commtest", communicationtest.HandlerFunc())
+
+	server.Handle("/tracing", tracing.HandlerFunc(logger))
 
 	server.Handle("/", monitoring.NewHitCounterMiddleware(
 		logging.NewLoggingMiddleware(
