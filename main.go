@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"fmt"
 	"github.com/oslokommune/okctl-hello/pkg/tracing"
+	"github.com/oslokommune/okctl-hello/pkg/tracingreceiver"
 	"net/http"
 	"os"
 	"strconv"
@@ -76,6 +77,7 @@ func main() {
 	server.Handle("/commtest", communicationtest.HandlerFunc())
 
 	server.Handle("/tracing", tracing.HandlerFunc(logger))
+	server.Handle("/tracing-receiver", tracingreceiver.HandlerFunc())
 
 	server.Handle("/", monitoring.NewHitCounterMiddleware(
 		logging.NewLoggingMiddleware(

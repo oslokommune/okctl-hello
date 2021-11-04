@@ -1,26 +1,16 @@
 package tracing
 
 import (
-	"context"
 	"fmt"
+	"github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/ext"
 	"github.com/sirupsen/logrus"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/sdk/resource"
-	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
 	"io"
-	"math/rand"
+	"io/ioutil"
 	"net/http"
-	"os"
-	"strconv"
 	"strings"
 	"time"
-
-	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
-	"go.opentelemetry.io/otel/sdk/trace"
 )
-
-const trackerName = "mytracker"
 
 // HandlerFunc returns the health handler
 func HandlerFunc(logger *logrus.Logger) http.HandlerFunc {
@@ -31,36 +21,18 @@ func HandlerFunc(logger *logrus.Logger) http.HandlerFunc {
 			_, _ = writer.Write([]byte(fmt.Sprintf("Error: %s", err.Error())))
 			return
 		}
-
-		writer.WriteHeader(http.StatusOK)
 	}
 }
 
 func handler(logger *logrus.Logger, writer io.Writer) error {
-	f, err := os.Create("traces.txt")
-	if err != nil {
-		return fmt.Errorf("creating trace file: %w", err)
-	}
+	tracer, closer := InitJaeger("okctl-hello")
 	//goland:noinspection GoUnhandledErrorResult
-	defer f.Close()
+	defer closer.Close()
 
-	exp, err := newExporter(f)
-	if err != nil {
-		return fmt.Errorf("creating exporter: %w", err)
-	}
+	span := tracer.StartSpan("work")
+	defer span.Finish()
 
-	tp := trace.NewTracerProvider(
-		trace.WithBatcher(exp),
-		trace.WithResource(newResource()),
-	)
-	defer func() {
-		if err := tp.Shutdown(context.Background()); err != nil {
-			logger.Errorf("error shutting down tracer provider: %s", err.Error())
-		}
-	}()
-	otel.SetTracerProvider(tp)
-
-	err = work(writer)
+	err := work(logger, writer, tracer)
 	if err != nil {
 		return fmt.Errorf("working: %w", err)
 	}
@@ -68,17 +40,17 @@ func handler(logger *logrus.Logger, writer io.Writer) error {
 	return nil
 }
 
-func work(writer io.Writer) error {
+func work(logger *logrus.Logger, writer io.Writer, tracer opentracing.Tracer) error {
 	var err error
 	response := strings.Builder{}
 
-	ctx, span := otel.Tracer(trackerName).Start(context.Background(), "Run")
-	defer span.End()
-
 	response.WriteString(fmt.Sprintln("Doing some work..."))
 
-	digForGold(ctx)
-	goToTheMoon(ctx)
+	digForGold(tracer)
+	err = goToTheMoon(logger, tracer)
+	if err != nil {
+		return fmt.Errorf("going to the moon: %w", err)
+	}
 
 	response.WriteString(fmt.Sprintln("Done working."))
 
@@ -90,45 +62,35 @@ func work(writer io.Writer) error {
 	return nil
 }
 
-func digForGold(ctx context.Context) {
-	_, span := otel.Tracer(trackerName).Start(ctx, "Moon")
-	defer span.End()
+func digForGold(tracer opentracing.Tracer) {
+	span := tracer.StartSpan("digForGold")
+	defer span.Finish()
 
 	time.Sleep(time.Millisecond * 700)
 }
 
-func goToTheMoon(ctx context.Context) {
-	_, span := otel.Tracer(trackerName).Start(ctx, "Moon")
-	defer span.End()
+func goToTheMoon(logger *logrus.Logger, tracer opentracing.Tracer) error {
+	span := tracer.StartSpan("goToTheMoon")
+	defer span.Finish()
 
-	rndInt := rand.Intn(10) //nolint:gosec
-	span.SetAttributes(attribute.String("someImportantValue", strconv.Itoa(rndInt)))
+	url := "http://localhost:3000/tracing-receiver"
+	req, _ := http.NewRequest("GET", url, nil)
 
-	time.Sleep(time.Millisecond * 200)
+	// Set some tags on the clientSpan to annotate that it's the client span. The additional HTTP tags are useful for debugging purposes.
+	ext.SpanKindRPCClient.Set(span)
+	ext.HTTPUrl.Set(span, url)
+	ext.HTTPMethod.Set(span, "GET")
 
-}
+	// Inject the client span context into the headers
+	err := tracer.Inject(span.Context(), opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(req.Header))
+	if err != nil {
+		return fmt.Errorf("injecting: %w", err)
+	}
+	resp, _ := http.DefaultClient.Do(req)
 
-// newExporter returns a console exporter.
-func newExporter(w io.Writer) (*stdouttrace.Exporter, error) {
-	return stdouttrace.New(
-		stdouttrace.WithWriter(w),
-		// Use human readable output.
-		stdouttrace.WithPrettyPrint(),
-		// Do not print timestamps for the demo.
-		stdouttrace.WithoutTimestamps(),
-	)
-}
+	respString, err := ioutil.ReadAll(resp.Body)
+	logger.Infof("Response: %s\n", string(respString))
 
-// newResource returns a resource describing this application.
-func newResource() *resource.Resource {
-	r, _ := resource.Merge(
-		resource.Default(),
-		resource.NewWithAttributes(
-			semconv.SchemaURL,
-			semconv.ServiceNameKey.String("okctl-hello"),
-			semconv.ServiceVersionKey.String("v0.0.10"),
-			attribute.String("environment", "test"),
-		),
-	)
-	return r
+	return nil
+
 }
