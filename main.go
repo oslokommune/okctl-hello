@@ -3,10 +3,11 @@ package main
 import (
 	_ "embed"
 	"fmt"
-	"github.com/oslokommune/okctl-hello/pkg/communicationtest"
 	"net/http"
 	"os"
 	"strconv"
+
+	"github.com/oslokommune/okctl-hello/pkg/communicationtest"
 
 	"github.com/oslokommune/okctl-hello/pkg/loadtest"
 
