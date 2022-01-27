@@ -84,7 +84,7 @@ jobs:
           ECR_REPOSITORY: okctl-hello
           IMAGE_TAG: ${{ steps.tag.outputs.IMAGE_TAG }}
         run: |
-          docker build --tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker build --tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
   update-iac-tag:
