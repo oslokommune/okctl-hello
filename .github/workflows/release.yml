@@ -1,31 +1,47 @@
-# This is a basic workflow to help you get started with Actions
+name: Build and deploy main to dev
 
-name: Build and deploy
-
-# Controls when the action will run. Triggers the workflow on push or pull request
-# events but only for the master branch
 on:
   workflow_dispatch: {}
   push:
     branches:
-    - main
+      - main
     paths:
       - 'main.go'
       - '*/**.go'
       - '*/**.html'
       - Dockerfile
       - 'go.*'
-
-      # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
-  release:
-    # The type of runner that the job will run on
+
+  okct-hello-build-push:
+    environment: dev
     runs-on: ubuntu-latest
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
+    # These permissions are needed to interact with GitHub's OIDC Token endpoint.
+    permissions:
+      id-token: write
+      contents: read
+
+    outputs:
+      # Tag when pushing image to ECR
+      IMAGE_TAG: ${{ steps.tag.outputs.IMAGE_TAG }}
+
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+
+      #####
+      # Set up the AWS login
+      - uses: aws-actions/configure-aws-credentials@v1
+        name: Configure the AWS credentials
+        with:
+          aws-region: eu-west-1
+          role-to-assume: ${{ secrets.DEV_OKCTL_HELLO_ECR_PUSH_ROLE }}
+
+      - uses: aws-actions/amazon-ecr-login@v1
+        name: Login to Amazon ECR
+        id: login-ecr
+
+      #####
+      # Set up and run all tests
       - uses: actions/setup-go@v2
         with:
           go-version: ^1.16
@@ -44,29 +60,67 @@ jobs:
       - name: Run test build
         run: go build -a -installsuffix cgo -o okctl-hello .
 
-      - name: Login to GitHub Packages Docker Registry
-        uses: docker/login-action@v1
-        with:
-          registry: ghcr.io
-          username: julius.pedersen@origo.oslo.kommune.no
-          password: ${{ secrets.JULIUS_DEPLOY_PAT }}
-
-      - name: Github Tag Bump
-        id: bump_version
-        uses: anothrNick/github-tag-action@18284c78f6ac68868d5341f57c4f971fb5b7605c # 1.34.0
+      #####
+      # Will generate a tag in the following format: 2021-11-22Z.01e3dd9.10327
+      # Set as image tag when pushed to ECR and for updating the image tag
+      # in the IAC-repo (see "update-iac-tag" below)
+      - name: Generate image tag
+        id: tag
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DEFAULT_BUMP: patch
-          RELEASE_BRANCHES: main
-          WITH_V: true
+          HASH: ${{ github.sha }}
+        run: |
+          stamp=$(date -u +%FZ)
+          short_sha=$(git rev-parse --short $HASH)
+          tag="$stamp.$short_sha.$RANDOM"
+          echo "::set-output name=IMAGE_TAG::$tag"
+        working-directory: .
 
-      - run: echo "tag=ghcr.io/oslokommune/okctl-hello" >> $GITHUB_ENV
-        id: tag_store
-      - run: echo "version=$(git describe --tags `git rev-list --tags --max-count=1`)" >> $GITHUB_ENV
-        id: version_store
 
-      - name: Build and push Docker images
-        run: docker build --tag ${{ env.tag }}:${{ env.version }} .
 
-      - name: Push docker image
-        run: docker push ${{ env.tag }}:${{ env.version }}
+      - name: Build and push
+        id: jib
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: okctl-hello
+          IMAGE_TAG: ${{ steps.tag.outputs.IMAGE_TAG }}
+        run: |
+          docker build --tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+  update-iac-tag:
+    needs: okct-hello-build-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          repository: 'oslokommune/h-eide-okctl-config'
+          ref: 'main'
+          ssh-key: '${{ secrets.DEV_OKCTL_HELLO_IAC_DEPLOY_KEY }}'
+
+      - uses: oslokommune/ssh-agent@v0.5.3
+        with:
+          ssh-private-key: ${{ secrets.DEV_OKCTL_HELLO_IAC_DEPLOY_KEY }}
+
+      - name: Update IAC repo with image
+        env:
+          IMAGE_TAG: ${{ needs.okct-hello-build-push.outputs.IMAGE_TAG }}
+          DEPLOYMENT_FILE: infrastructure/applications/okct-hello/overlays/h-eide-dev/deployment-patch.json
+        run: |
+          # Update image tag
+          sudo apt install jq
+          image=$(jq -r '.[] | select(.path=="/spec/template/spec/containers/0/image").value' ${DEPLOYMENT_FILE})
+          if [[ "$image" == *":"* ]]; then
+            tag=$(echo $image | cut -d ":" -f2)
+            newimage=$(sed "s#$tag#$IMAGE_TAG#" <<< $image)
+            sed -i "s#$image#$newimage#" $DEPLOYMENT_FILE
+          else
+           sed -i "s#$image#$image:$IMAGE_TAG#" $DEPLOYMENT_FILE
+          fi
+          # Update IAC repository
+          git config --global user.email "no-reply@origo.oslo.kommune.no"
+          git config --global user.name "okctl-hello"
+          git add $DEPLOYMENT_FILE
+          git commit -m "haavardeide/okctl-hello new image tag"
+          git push
+        working-directory: .
