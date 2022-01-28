@@ -95,7 +95,7 @@ jobs:
       - uses: actions/checkout@v2
         with:
           repository: 'oslokommune/h-eide-okctl-config'
-          ref: 'main'
+          ref: 'master'
           ssh-key: '${{ secrets.DEV_OKCTL_HELLO_IAC_DEPLOY_KEY }}'
 
       - uses: oslokommune/ssh-agent@v0.5.3
