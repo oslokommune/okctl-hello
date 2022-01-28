@@ -11,6 +11,7 @@ on:
       - '*/**.html'
       - Dockerfile
       - 'go.*'
+      - '.github/workflows/*.yml'
 jobs:
 
   okct-hello-build-push:
@@ -105,7 +106,7 @@ jobs:
       - name: Update IAC repo with image
         env:
           IMAGE_TAG: ${{ needs.okct-hello-build-push.outputs.IMAGE_TAG }}
-          DEPLOYMENT_FILE: infrastructure/applications/okct-hello/overlays/h-eide-dev/deployment-patch.json
+          DEPLOYMENT_FILE: infrastructure/applications/okctl-hello/overlays/h-eide-dev/deployment-patch.json
         run: |
           # Update image tag
           sudo apt install jq
