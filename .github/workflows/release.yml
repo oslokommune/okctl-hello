@@ -105,7 +105,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
         with:
-          repository: 'oslokommune/h-eide-okctl-config'
+          repository: 'oslokommune/okctl-reference-iac'
           ref: 'master'
           ssh-key: ${{ secrets.DEV_OKCTL_HELLO_IAC_DEPLOY_KEY }}
 
@@ -116,7 +116,7 @@ jobs:
       - name: Update IAC repo with image
         env:
           IMAGE_TAG: ${{ needs.okct-hello-build-push.outputs.IMAGE_TAG }}
-          DEPLOYMENT_FILE: infrastructure/applications/okctl-hello/overlays/h-eide-dev/deployment-patch.json
+          DEPLOYMENT_FILE: infrastructure/applications/okctl-reference-app/overlays/okctl-reference-dev/deployment-patch.json
         run: |
           # Update image tag
           sudo apt install jq
@@ -132,6 +132,6 @@ jobs:
           git config --global user.email "no-reply@origo.oslo.kommune.no"
           git config --global user.name "okctl-hello"
           git add $DEPLOYMENT_FILE
-          git commit -m "haavardeide/okctl-hello new image tag"
+          git commit -m "oslokommune/okctl-reference-iac new image tag"
           git push
         working-directory: .
