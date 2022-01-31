@@ -18,30 +18,20 @@ jobs:
     environment: dev
     runs-on: ubuntu-latest
 
-    # These permissions are needed to interact with GitHub's OIDC Token endpoint.
+    # These permissions are needed to interact with GitHub's OIDC Token endpoint
     permissions:
       id-token: write
       contents: read
 
     outputs:
-      # Tag when pushing image to ECR
+      # Tag when pushing image to ECR and updating IAC repo
       IMAGE_TAG: ${{ steps.tag.outputs.IMAGE_TAG }}
 
     steps:
 
       #####
-      # Set up the AWS login
-      - uses: aws-actions/configure-aws-credentials@v1
-        name: Configure the AWS credentials
-        with:
-          aws-region: eu-west-1
-          role-to-assume: ${{ secrets.DEV_OKCTL_HELLO_ECR_PUSH_ROLE }}
-
-      - uses: aws-actions/amazon-ecr-login@v1
-        name: Login to Amazon ECR
-        id: login-ecr
-
-      #####
+      # Application specific steps - modify accordingly to your application
+      #
       # Set up and run all tests
       - uses: actions/setup-go@v2
         with:
@@ -62,7 +52,7 @@ jobs:
         run: go build -a -installsuffix cgo -o okctl-hello .
 
       #####
-      # Will generate a tag in the following format: 2021-11-22Z.01e3dd9.10327
+      # Will generate a tag in the following format: `2021-11-22Z.01e3dd9.10327`
       # Set as image tag when pushed to ECR and for updating the image tag
       # in the IAC-repo (see "update-iac-tag" below)
       - name: Generate image tag
@@ -76,18 +66,38 @@ jobs:
           echo "::set-output name=IMAGE_TAG::$tag"
         working-directory: .
 
+      #####
+      # Set up and login to your AWS account
+      - uses: aws-actions/configure-aws-credentials@v1
+        name: Configure the AWS credentials
+        with:
+          aws-region: eu-west-1
+          # The full ARN for the role created in terraform
+          role-to-assume: ${{ secrets.DEV_OKCTL_HELLO_ECR_PUSH_ROLE }}
 
+      - uses: aws-actions/amazon-ecr-login@v1
+        name: Login to Amazon ECR
+        id: login-ecr
 
+      #####
+      # At this point we are logged in and have assumed a role
+      # in AWS, you can now interact with the AWS resources
+      # that your role permits you to
       - name: Build and push
-        id: jib
+        id: build-and-push
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          # The ECR repo that okctl created (or any other repo, just ensure
+          # it matches the path in the role)
           ECR_REPOSITORY: okctl-hello
           IMAGE_TAG: ${{ steps.tag.outputs.IMAGE_TAG }}
         run: |
           docker build --tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
+  #####
+  # Checks out the IAC repo, updates the overlay file with the
+  # current IMAGE_TAG and pushes this back to github.
   update-iac-tag:
     needs: okct-hello-build-push
     runs-on: ubuntu-latest
@@ -97,7 +107,7 @@ jobs:
         with:
           repository: 'oslokommune/h-eide-okctl-config'
           ref: 'master'
-          ssh-key: '${{ secrets.DEV_OKCTL_HELLO_IAC_DEPLOY_KEY }}'
+          ssh-key: ${{ secrets.DEV_OKCTL_HELLO_IAC_DEPLOY_KEY }}
 
       - uses: oslokommune/ssh-agent@v0.5.3
         with:
