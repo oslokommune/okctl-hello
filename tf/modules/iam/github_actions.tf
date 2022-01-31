@@ -20,8 +20,8 @@ module "okctl-hello" {
   tags              = local.tags
 
   # Update the following variables
-  github_account    = "oslokommune"
-  name              = "okctl-hello"
-  ecr_repo          = "okctl-hello"
-  github_repo       = "okctl-hello"
+  github_account = "oslokommune"
+  name           = "okctl-hello"
+  ecr_repo       = "okctl-hello"
+  github_repo    = "okctl-hello"
 }
