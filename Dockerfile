@@ -7,6 +7,7 @@ RUN go get -d -v ./...
 
 COPY ./pkg ./pkg
 COPY main.go .
+COPY postgres.go .
 COPY ./public ./public
 
 RUN go build -a -installsuffix cgo -o openapi .
