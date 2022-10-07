@@ -2,18 +2,17 @@ package main
 
 import (
 	_ "embed"
-	"fmt"
-	"github.com/oslokommune/okctl-hello/pkg/communicationtest"
 	"net/http"
 	"os"
-	"strconv"
+
+	"github.com/oslokommune/okctl-hello/pkg/communicationtest"
+	"github.com/oslokommune/okctl-hello/pkg/killswitch"
 
 	"github.com/oslokommune/okctl-hello/pkg/loadtest"
 
 	"github.com/oslokommune/okctl-hello/pkg/health"
 
 	"github.com/oslokommune/okctl-hello/pkg/logging"
-	"github.com/oslokommune/okctl-hello/pkg/postgres"
 	"github.com/sirupsen/logrus"
 
 	"github.com/oslokommune/okctl-hello/pkg/content"
@@ -27,26 +26,63 @@ var indexHtml []byte
 //go:embed public/logo.png
 var logo []byte
 
+var logger = &logrus.Logger{
+	Out:       os.Stdout,
+	Formatter: &logrus.JSONFormatter{},
+	Level:     logrus.InfoLevel,
+}
+
+type route struct {
+	path    string
+	handler http.Handler
+}
+
+var routes = []route{
+	{
+		path: "/",
+		handler: monitoring.NewHitCounterMiddleware(logging.NewLoggingMiddleware(
+			logger,
+			content.StaticHtmlHandler(indexHtml),
+		)),
+	},
+	{
+		path:    "/logo.png",
+		handler: monitoring.NewOlliCounterMiddleware(content.LogoHandler(logo)),
+	},
+	{
+		path:    "/metrics",
+		handler: promhttp.Handler(),
+	},
+	{
+		path: "/health",
+		handler: func() http.Handler {
+			if debug := os.Getenv("DEBUG"); debug == "true" {
+				return health.DebugHandler(logger)
+			}
+
+			return health.HandlerFunc()
+		}(),
+	},
+	{
+		path:    "/burn-cpu",
+		handler: loadtest.HandlerFunc(),
+	},
+	{
+		path:    "/commtest",
+		handler: communicationtest.HandlerFunc(),
+	},
+	{
+		path:    "/kill",
+		handler: killswitch.HandlerFunc(logger),
+	},
+}
+
 func main() {
 	server := http.NewServeMux()
 
-	logger := &logrus.Logger{
-		Out:       os.Stdout,
-		Formatter: &logrus.JSONFormatter{},
-		Level:     logrus.InfoLevel,
+	for _, route := range routes {
+		server.Handle(route.path, route.handler)
 	}
-
-	if debug := os.Getenv("DEBUG"); debug != "true" {
-		server.Handle("/health", health.HandlerFunc())
-	} else {
-		server.Handle("/health", health.DebugHandler(logger))
-	}
-
-	server.Handle("/metrics", promhttp.Handler())
-
-	server.Handle("/logo.png", monitoring.NewOlliCounterMiddleware(
-		content.LogoHandler(logo),
-	))
 
 	if rawDSN := os.Getenv("DSN"); rawDSN != "" {
 		logger.Info("Found DSN. Enabling Postgres integration")
@@ -69,78 +105,5 @@ func main() {
 		})
 	}
 
-	server.Handle("/burn-cpu", loadtest.HandlerFunc())
-
-	server.Handle("/commtest", communicationtest.HandlerFunc())
-
-	server.Handle("/", monitoring.NewHitCounterMiddleware(
-		logging.NewLoggingMiddleware(
-			logger,
-			content.StaticHtmlHandler(indexHtml),
-		),
-	))
-
 	logger.Fatal(http.ListenAndServe(":3000", server))
-}
-
-func enablePostgres(server *http.ServeMux, logger *logrus.Logger, rawDSN string) error {
-	dsn := postgres.ParseDSN(rawDSN)
-
-	if err := dsn.Validate(); err != nil {
-		return fmt.Errorf("validating DSN: %w", err)
-	}
-
-	pgClient := postgres.Client{DSN: dsn}
-	dbErrorFields := logrus.Fields{
-		"database-host": pgClient.DSN.URI,
-		"database-port": pgClient.DSN.Port,
-		"database-user": pgClient.DSN.Username,
-	}
-
-	server.HandleFunc("/postgres/write", func(w http.ResponseWriter, r *http.Request) {
-		err := pgClient.Open()
-		if err != nil {
-			logger.WithFields(dbErrorFields).Errorf("opening database: %s", err.Error())
-
-			return
-		}
-
-		defer func() {
-			_ = pgClient.Close()
-		}()
-
-		err = pgClient.Write()
-		if err != nil {
-			logger.WithFields(dbErrorFields).Errorf("writing to database: %s", err.Error())
-
-			return
-		}
-
-		w.WriteHeader(http.StatusOK)
-	})
-
-	server.HandleFunc("/postgres/read", func(w http.ResponseWriter, r *http.Request) {
-		err := pgClient.Open()
-		if err != nil {
-			logger.WithFields(dbErrorFields).Errorf("opening database: %s", err.Error())
-
-			return
-		}
-
-		defer func() {
-			_ = pgClient.Close()
-		}()
-
-		currentHits, err := pgClient.Read()
-		if err != nil {
-			logger.WithFields(dbErrorFields).Errorf("reading from database: %s", err.Error())
-
-			return
-		}
-
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(fmt.Sprintf("hits: %s", strconv.Itoa(currentHits))))
-	})
-
-	return nil
 }
